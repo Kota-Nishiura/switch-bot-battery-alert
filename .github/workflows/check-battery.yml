@@ -1,0 +1,35 @@
+name: SwitchBot Battery Check
+
+on:
+  # 定期実行: 毎日 9:00 JST (0:00 UTC)
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # 手動実行を許可
+  workflow_dispatch:
+
+jobs:
+  check-battery:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+      
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: 依存パッケージをインストール
+        run: npm ci
+      
+      - name: バッテリーチェックを実行
+        env:
+          SWITCHBOT_TOKEN: ${{ secrets.SWITCHBOT_TOKEN }}
+          SWITCHBOT_SECRET: ${{ secrets.SWITCHBOT_SECRET }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BATTERY_THRESHOLD: ${{ secrets.BATTERY_THRESHOLD || '30' }}
+          SWITCHBOT_DEVICE_IDS: ${{ secrets.SWITCHBOT_DEVICE_IDS }}
+        run: npm run check
