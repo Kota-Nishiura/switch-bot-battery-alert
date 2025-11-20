@@ -1,9 +1,9 @@
 name: SwitchBot Battery Check
 
 on:
-  # 定期実行: 毎日 9:00 JST (0:00 UTC)
+  # 定期実行: 毎週月曜 9:00 JST (0:00 UTC)
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * 1'
   
   # 手動実行を許可
   workflow_dispatch:

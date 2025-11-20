@@ -1,6 +1,9 @@
 // scripts/check-switchbot-battery.js
 // SwitchBot ロック類のバッテリーを監視して、閾値以下なら Slack に通知する
 
+// ローカルテスト用: .env ファイルから環境変数を読み込む
+require('dotenv').config();
+
 const axios = require('axios');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -67,10 +70,10 @@ async function fetchDevices() {
     );
   }
 
-  const deviceCount = res.data.body.deviceList?.length || 0;
+  const deviceCount = res.data.body?.deviceList?.length || 0;
   console.log(`✅ ${deviceCount} 個のデバイスを取得しました`);
 
-  return res.data.body.deviceList;
+  return res.data.body?.deviceList || [];
 }
 
 async function fetchStatus(deviceId) {
@@ -126,6 +129,7 @@ async function main() {
 
     console.log(`\n🔋 ${candidateDevices.length} 個のデバイスのバッテリーをチェックします...\n`);
 
+    const deviceStatuses = [];
     const lowDevices = [];
 
     for (const device of candidateDevices) {
@@ -158,33 +162,51 @@ async function main() {
         continue;
       }
 
-      const statusIcon = battery <= BATTERY_THRESHOLD ? '🔴' : '🟢';
+      const isLow = battery <= BATTERY_THRESHOLD;
+      const statusIcon = isLow ? '🔴' : '🟢';
+
       console.log(`${statusIcon} ${formatDeviceName(device)}: ${battery}%`);
 
-      if (battery <= BATTERY_THRESHOLD) {
+      deviceStatuses.push({ device, battery, isLow });
+
+      if (isLow) {
         lowDevices.push({ device, battery });
       }
     }
 
     console.log('\n' + '='.repeat(60));
 
-    if (lowDevices.length === 0) {
-      console.log(`✅ 全ての対象デバイスのバッテリーがしきい値 ${BATTERY_THRESHOLD}% より上でした。`);
-      console.log('🎉 通知は送信されません。');
+    if (deviceStatuses.length === 0) {
+      console.log('⚠️  バッテリー情報を取得できたデバイスがありませんでした。');
       return;
     }
 
-    console.log(`⚠️  ${lowDevices.length} 個のデバイスがしきい値以下です！`);
+    // 日付を取得（JST）
+    const now = new Date();
+    const jstDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+    const dateStr = jstDate.toISOString().split('T')[0];
 
-    const lines = lowDevices.map(
-      ({ device, battery }) => `• ${formatDeviceName(device)}: ${battery}%`
-    );
+    // Slack 通知用のメッセージを作成（全デバイスを表示）
+    const deviceLines = deviceStatuses.map(({ device, battery, isLow }) => {
+      const icon = isLow ? '🔴' : '🟢';
+      const warning = isLow ? ' ⚠️ *要交換*' : '';
+      const deviceName = device.deviceName || 'Unknown';
+      const deviceType = device.deviceType || 'Unknown';
+      return `${icon} ${deviceName} (${deviceType}): *${battery}%*${warning}`;
+    });
 
-    const text =
-      `:rotating_light: *SwitchBot バッテリー警告* :rotating_light:\n` +
-      `しきい値 *${BATTERY_THRESHOLD}%* 以下のデバイスがあります。\n\n` +
-      lines.join('\n') +
-      `\n\n:battery: バッテリー交換をご検討ください。`;
+    let text = `:battery: *SwitchBot バッテリーレポート* (${dateStr})\n\n`;
+    text += deviceLines.join('\n');
+    text += `\n\n━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `しきい値: *${BATTERY_THRESHOLD}%*\n`;
+
+    if (lowDevices.length > 0) {
+      text += `⚠️ *${lowDevices.length}個のデバイス*がバッテリー交換を推奨します`;
+      console.log(`⚠️  ${lowDevices.length} 個のデバイスがしきい値以下です！`);
+    } else {
+      text += `✅ 全てのデバイスのバッテリーは正常です`;
+      console.log(`✅ 全てのデバイスのバッテリーがしきい値 ${BATTERY_THRESHOLD}% より上でした。`);
+    }
 
     await sendSlack(text);
     console.log('✅ 処理が完了しました。');
