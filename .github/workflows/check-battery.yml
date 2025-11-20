@@ -30,6 +30,6 @@ jobs:
           SWITCHBOT_TOKEN: ${{ secrets.SWITCHBOT_TOKEN }}
           SWITCHBOT_SECRET: ${{ secrets.SWITCHBOT_SECRET }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          BATTERY_THRESHOLD: ${{ secrets.BATTERY_THRESHOLD || '30' }}
+          BATTERY_THRESHOLD: ${{ vars.BATTERY_THRESHOLD || secrets.BATTERY_THRESHOLD || '30' }}
           SWITCHBOT_DEVICE_IDS: ${{ secrets.SWITCHBOT_DEVICE_IDS }}
         run: npm run check
