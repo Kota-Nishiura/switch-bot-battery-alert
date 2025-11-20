@@ -112,7 +112,7 @@ async function main() {
     const devices = await fetchDevices();
 
     // ロック / キーパッド系だけに絞る
-    const targetTypes = ['Lock', 'Lock Pro', 'Lock Ultra', 'Lock Lite', 'Keypad', 'Keypad Touch'];
+    const targetTypes = ['Lock', 'Lock Pro', 'Lock Ultra', 'Lock Lite', 'Smart Lock', 'Keypad', 'Keypad Touch'];
 
     const candidateDevices = devices.filter((d) => {
       const t = d.deviceType;
@@ -141,6 +141,8 @@ async function main() {
       } catch (err) {
         console.error(`❌ ステータス取得失敗: ${formatDeviceName(device)}`);
         console.error(`   エラー: ${err.message}`);
+        // ステータス取得失敗したデバイスもレポートに含めるため、ここで continue せずに処理を続行
+        deviceStatuses.push({ device, battery: NaN, isLow: false, isUnknown: true, error: err.message });
         continue;
       }
 
@@ -153,21 +155,23 @@ async function main() {
         battery = parseInt(status.battery, 10);
       }
 
-      if (Number.isNaN(battery)) {
-        // キーパッドなど、現状 battery が取れない場合はここに来る可能性が高い
-        console.log(
-          `⚠️  battery フィールドがありません: ${formatDeviceName(device)}`
-        );
-        console.log(`   利用可能なフィールド: ${Object.keys(status).join(', ')}`);
-        continue;
+      // バッテリー取得可否の判定
+      const isUnknown = Number.isNaN(battery);
+      const isLow = !isUnknown && battery <= BATTERY_THRESHOLD;
+
+      let statusIcon = '🟢';
+      let displayBattery = `${battery}%`;
+
+      if (isUnknown) {
+        statusIcon = '⚪️';
+        displayBattery = '不明 (API未対応)';
+        console.log(`${statusIcon} ${formatDeviceName(device)}: バッテリー情報なし`);
+      } else {
+        statusIcon = isLow ? '🔴' : '🟢';
+        console.log(`${statusIcon} ${formatDeviceName(device)}: ${battery}%`);
       }
 
-      const isLow = battery <= BATTERY_THRESHOLD;
-      const statusIcon = isLow ? '🔴' : '🟢';
-
-      console.log(`${statusIcon} ${formatDeviceName(device)}: ${battery}%`);
-
-      deviceStatuses.push({ device, battery, isLow });
+      deviceStatuses.push({ device, battery, isLow, isUnknown });
 
       if (isLow) {
         lowDevices.push({ device, battery });
@@ -187,11 +191,16 @@ async function main() {
     const dateStr = jstDate.toISOString().split('T')[0];
 
     // Slack 通知用のメッセージを作成（全デバイスを表示）
-    const deviceLines = deviceStatuses.map(({ device, battery, isLow }) => {
-      const icon = isLow ? '🔴' : '🟢';
-      const warning = isLow ? ' ⚠️ *要交換*' : '';
+    const deviceLines = deviceStatuses.map(({ device, battery, isLow, isUnknown }) => {
       const deviceName = device.deviceName || 'Unknown';
       const deviceType = device.deviceType || 'Unknown';
+
+      if (isUnknown) {
+        return `⚪️ ${deviceName} (${deviceType}): *不明* (API未対応)`;
+      }
+
+      const icon = isLow ? '🔴' : '🟢';
+      const warning = isLow ? ' ⚠️ *要交換*' : '';
       return `${icon} ${deviceName} (${deviceType}): *${battery}%*${warning}`;
     });
 
